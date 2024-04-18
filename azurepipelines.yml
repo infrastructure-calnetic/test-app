@@ -1,0 +1,52 @@
+# Azure Pipelines YAML
+
+variables:
+  gitHub_RepoURL: $(gitHubRepoURL) # Reference the variable defined in the Azure DevOps build definition
+  githubToken: $(github_token) # Reference the variable defined in the Azure DevOps build definition
+  vm_Hostname: '$(vmHostname)' # Reference the variable for your VM's hostname or IP address
+  vm_UserName: '$(vmUserName)' # Reference the variable for your VM's username
+stages:
+
+# Source Stage
+- stage: Source
+  jobs:
+  - job: SourceJob
+    pool:
+      vmImage: 'ubuntu-latest' # Use a Microsoft-hosted agent for the Source stage
+    steps:
+    - checkout: none  # Skip checking out the repository since we'll clone it manually
+    - script: |
+        echo $(gitHub_RepoURL)
+        git clone https://$(githubUser):$(githubToken)@$(gitHub_RepoURL) repo
+      displayName: 'Clone Repository'
+    - task: CopyFilesOverSSH@0
+      inputs:
+        sshEndpoint: $(azureServiceConnectionName)
+        contents: 'repo/**' # Copy the entire cloned repository directory
+        targetFolder: '/home/$(vm_UserName)/'
+
+# Deploy Stage
+- stage: Deploy
+  jobs:
+  - deployment: DeployJob
+    pool:
+      vmImage: 'ubuntu-latest' # Use a Microsoft-hosted agent for the Deploy stage
+    environment: development
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: SSH@0
+            inputs:
+              sshEndpoint: $(azureServiceConnectionName) # Replace with your VM's SSH endpoint
+              runOptions: 'commands'
+              commands: |
+                # Navigate to the copied repository directory
+                cd /home/$(vm_UserName)/repo
+                echo $(pwd)
+                sudo docker container rm -f $(sudo docker ps -aq)
+                sudo docker container run -d --name=app testing:latest
+                cd shivam
+                ls -al 
+                echo $(date)
+              readyTimeout: '20000'
